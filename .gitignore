@@ -167,3 +167,7 @@ keys.json
 examples/**/package-lock.json
 examples/**/yarn.lock
 examples/**/pnpm-lock.yaml
+# Local Supabase sync secrets
+supabase-sync/.env.sync
+supabase-sync/rclone.conf
+supabase-sync/logs/

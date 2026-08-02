@@ -66,8 +66,8 @@ DB_CONTAINER="supabase-db"
 UPGRADE_CONTAINER="supabase-pg-upgrade"
 COMPLETE_CONTAINER="supabase-pg-complete"
 
-DATA_DIR="./volumes/db/data"
-BACKUP_DIR="./volumes/db/data.bak.pg15"
+DATA_DIR="/opt/supabase/supabase-data/postgres"
+BACKUP_DIR="/opt/supabase/supabase-data/postgres.bak.pg15"
 # Include image tag in cache filename so changing PG17_UPGRADE_IMAGE invalidates it
 PG17_TAG="${PG17_UPGRADE_IMAGE##*:}"
 TARBALL_CACHE="./volumes/db/pg17_upgrade_bin_${PG17_TAG}.tar.gz"
@@ -92,7 +92,8 @@ db_config_vol=""
 # inside Docker - the resulting files are root-owned and can't be deleted
 # by the host user on macOS.
 cleanup() {
-    docker rm -f "$UPGRADE_CONTAINER" >/dev/null 2>&1 || true
+    docker exec "$UPGRADE_CONTAINER" cat /tmp/pg15.log 2>/dev/null || true
+    # docker rm -f "$UPGRADE_CONTAINER" 2>/dev/null || true
     docker rm -f "$COMPLETE_CONTAINER" >/dev/null 2>&1 || true
     if [ -n "$staging_dir" ] && [ -d "$staging_dir" ]; then
         docker run --rm -v "$staging_dir:/cleanup" alpine rm -rf /cleanup 2>/dev/null || true
@@ -411,7 +412,7 @@ stop_and_backup() {
     local key_backup="./volumes/db/pgsodium_root.key.bak.pg15"
     docker run --rm -v "${db_config_vol}:/src:ro" -v "$(pwd)/volumes/db:/dst" \
         alpine cp /src/pgsodium_root.key /dst/pgsodium_root.key.bak.pg15 \
-        || die "Failed to back up pgsodium root key from db-config volume."
+        || warn "Failed to back up pgsodium root key from db-config volume. Ignoring."
     echo "  Saved to: $key_backup"
 
     info "Stopping all Supabase services"
@@ -448,8 +449,11 @@ run_upgrade() {
         infinity
 
     info "Preparing upgrade environment"
+
     docker exec "$UPGRADE_CONTAINER" bash -c '
         # Symlink bind mounts to the paths the upgrade scripts expect
+        mkdir -p /var/lib/postgresql /var/run/postgresql /var/lib/dpkg/updates
+        chown -R postgres:postgres /var/run/postgresql
         rm -rf /var/lib/postgresql/data
         ln -s /mnt/host-pgdata /var/lib/postgresql/data
         ln -s /mnt/host-migration /data_migration
@@ -467,6 +471,11 @@ run_upgrade() {
         # Patch PGSHARENEW to match nix binary expectations (share/postgresql/)
         sed -i "s|PGSHARENEW=\"\$PG_UPGRADE_BIN_DIR/share\"|PGSHARENEW=\"\$PG_UPGRADE_BIN_DIR/share/postgresql\"|" /tmp/upgrade/initiate.sh
     '
+
+    # Fix ownership on db-config volume in upgrade container to allow pgsodium_getkey.sh
+    if [ -n "$db_config_vol" ]; then
+        docker exec "$UPGRADE_CONTAINER" chown -R postgres:postgres /etc/postgresql-custom 2>/dev/null || true
+    fi
 
     info "Starting Postgres 15 in upgrade container"
     docker exec "$UPGRADE_CONTAINER" bash -c '
@@ -540,6 +549,7 @@ run_complete() {
         ln -s /mnt/host-migration /data_migration
 
         # Remove the image default data dir (complete.sh creates a symlink here)
+        mkdir -p /var/lib/postgresql
         rm -rf /var/lib/postgresql/data
 
         # Fix ownership on db-config volume (PG15 uid differs from PG17)
