@@ -4,7 +4,7 @@ import { createElement } from 'react'
 
 import type { ProductMenuGroup } from '@/components/ui/ProductMenu/ProductMenu.types'
 import { useIsFeatureEnabled } from '@/hooks/misc/useIsFeatureEnabled'
-import { IS_PLATFORM, ENABLE_SELF_HOSTED_AUTH_MENU } from '@/lib/constants'
+import { ENABLE_SELF_HOSTED_AUTH_MENU, IS_PLATFORM } from '@/lib/constants'
 import { SHORTCUT_IDS } from '@/state/shortcuts/registry'
 
 const ExternalLinkIcon = createElement(ArrowUpRight, { strokeWidth: 1, className: 'h-4 w-4' })
@@ -30,12 +30,13 @@ export function generateAuthMenu(options: GenerateAuthMenuOptions): ProductMenuG
   const passkeysInMenu = Boolean(features.passkeys)
   const baseUrl = `/project/${ref}/auth`
   const showAdvancedAuthMenu = isPlatform || enableSelfHostedAuthMenu
+  const showOverviewItem = showOverview || (!isPlatform && enableSelfHostedAuthMenu)
 
   return [
     {
       title: 'Manage',
       items: [
-        ...(showOverview
+        ...(showOverviewItem
           ? [
               {
                 name: 'Overview',
