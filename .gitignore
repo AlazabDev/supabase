@@ -170,7 +170,3 @@ examples/**/pnpm-lock.yaml
 # Python generated files
 __pycache__/
 *.py[cod]
-
-# Python generated files
-__pycache__/
-*.py[cod]
